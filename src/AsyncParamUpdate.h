@@ -14,10 +14,10 @@
 #include <Preferences.h>
 
 #define DELAY_MS 5000
-#define DEVICE_PREFIX "device-"
+#define BOARDS_PREFIX "boards/"
+#define REGISTRY_TOPIC "boards/registry"
 #define JSON_BUFFER_SIZE 1024
 #define MQTT_QOS_LEVEL 2
-#define PARAMETERS_SUFFIX "/parameters"
 #define LOG_SUFFIX "/log"
 #define WIFI_EVENT_CONNECTED SYSTEM_EVENT_STA_GOT_IP
 #define WIFI_EVENT_DISCONNECTED SYSTEM_EVENT_STA_DISCONNECTED
@@ -84,7 +84,7 @@ private:
     const char *wifiSSID;
     const char *wifiPassword;
     String deviceName;
-    String parametersTopic;
+    String updateTopic;
     String logTopic;
     const char *mqttHost;
     uint16_t mqttPort;

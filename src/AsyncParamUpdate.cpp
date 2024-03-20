@@ -8,9 +8,9 @@ AsyncParamUpdate::AsyncParamUpdate(const char *wifiSSID, const char *wifiPasswor
     instance = this;
     this->wifiSSID = wifiSSID;
     this->wifiPassword = wifiPassword;
-    this->deviceName = DEVICE_PREFIX + String(deviceName);
-    this->logTopic = this->deviceName + LOG_SUFFIX;
-    this->parametersTopic = String(this->deviceName) + PARAMETERS_SUFFIX;
+    this->deviceName = deviceName;
+    this->logTopic = BOARDS_PREFIX + this->deviceName + LOG_SUFFIX;
+    this->updateTopic = BOARDS_PREFIX + String(this->deviceName);
     this->mqttHost = mqttHost;
     this->mqttPort = mqttPort;
     this->mqttUser = mqttUser;
@@ -23,9 +23,6 @@ AsyncParamUpdate::AsyncParamUpdate(const char *wifiSSID, const char *wifiPasswor
     xTaskCreate(reconnectWifi, "WiFiReconnect", 4096, NULL, 1, &wifiConnectionTask);
     xTaskCreate(reconnectMqtt, "MqttReconnect", 4096, NULL, 1, &mqttConnectionTask);
     vTaskSuspend(mqttConnectionTask);
-
-    // addParameter("Wifi-ssid", this->wifiSSID);
-    // addParameter("Wifi-password", this->wifiPassword);
 }
 
 void AsyncParamUpdate::reconnectWifi(void *parameters)
@@ -39,7 +36,6 @@ void AsyncParamUpdate::reconnectWifi(void *parameters)
         }
         else
         {
-            // instance->logMessage("Wifi not connected...");
             WiFi.mode(WIFI_STA);
             WiFi.begin(instance->wifiSSID, instance->wifiPassword);
             vTaskDelay(pdMS_TO_TICKS(DELAY_MS));
@@ -82,14 +78,18 @@ void AsyncParamUpdate::OnMqttConnect(bool sessionPresent)
 {
 
     vTaskSuspend(instance->mqttConnectionTask);
-    instance->mqttClient.subscribe(instance->parametersTopic.c_str(), MQTT_QOS_LEVEL);
+    instance->mqttClient.subscribe(instance->updateTopic.c_str(), MQTT_QOS_LEVEL);
 
-    while (!instance->pendingMessages.empty())
+    if (instance->mqttLog)
     {
 
-        String pendingMessage = instance->pendingMessages.front();
-        instance->mqttClient.publish(instance->logTopic.c_str(), MQTT_QOS_LEVEL, false, pendingMessage.c_str());
-        instance->pendingMessages.pop();
+        while (!instance->pendingMessages.empty())
+        {
+
+            String pendingMessage = instance->pendingMessages.front();
+            instance->mqttClient.publish(instance->logTopic.c_str(), MQTT_QOS_LEVEL, false, pendingMessage.c_str());
+            instance->pendingMessages.pop();
+        }
     }
 
     instance->logMessage("Connected to MQTT.");
@@ -214,9 +214,10 @@ void AsyncParamUpdate::publishParametersList(std::string paramName)
     while (!mqttClient.connected())
     {
     };
-    logMessage(parametersTopic.c_str());
 
     JsonDocument doc;
+    doc["devicename"] = deviceName;
+    doc["ip"] = WiFi.localIP().toString();
     JsonArray paramsArray = doc["parameters"].to<JsonArray>();
 
     for (const auto &p : params)
@@ -226,7 +227,7 @@ void AsyncParamUpdate::publishParametersList(std::string paramName)
 
     char jsonBuffer[JSON_BUFFER_SIZE];
     serializeJson(doc, jsonBuffer);
-    mqttClient.publish(parametersTopic.c_str(), MQTT_QOS_LEVEL, true, jsonBuffer);
+    mqttClient.publish(REGISTRY_TOPIC, MQTT_QOS_LEVEL, true, jsonBuffer);
 }
 void AsyncParamUpdate::saveParameter(const std::string &key, int value)
 {
