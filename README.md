@@ -6,7 +6,7 @@ The `AsyncParamUpdate` library enables hot parameter updates for microcontroller
 
 - Hot parameter updates without interrupting main functions.
 - MQTT integration for efficient, real-time communication.
-- Web aplication compatibility for easy parameter configuration. [Web-App](https://github.com/fernandogc10/RemoteDevBoardConfig)
+- Web aplication compatibility for easy parameter configuration. [Web-App](https://github.com/fernandogc10/RemoteDevBoardConfiguratorWebApp)
 - Suitable for ESP32 and other compatible microcontrollers.
 
 ## Installation
