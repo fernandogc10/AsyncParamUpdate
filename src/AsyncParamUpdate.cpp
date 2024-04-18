@@ -11,6 +11,7 @@ AsyncParamUpdate::AsyncParamUpdate(const char *wifiSSID, const char *wifiPasswor
     this->deviceName = deviceName;
     this->logTopic = BOARDS_PREFIX + this->deviceName + LOG_SUFFIX;
     this->updateTopic = BOARDS_PREFIX + String(this->deviceName);
+    this->confirmationTopic = this->updateTopic + CONFIRMATION_SUFFIX;
     this->mqttHost = mqttHost;
     this->mqttPort = mqttPort;
     this->mqttUser = mqttUser;
@@ -23,6 +24,7 @@ AsyncParamUpdate::AsyncParamUpdate(const char *wifiSSID, const char *wifiPasswor
     xTaskCreate(reconnectWifi, "WiFiReconnect", 4096, NULL, 1, &wifiConnectionTask);
     xTaskCreate(reconnectMqtt, "MqttReconnect", 4096, NULL, 1, &mqttConnectionTask);
     vTaskSuspend(mqttConnectionTask);
+    xTaskCreate(sendActiveMessage, "ActiveMessage", 4096, NULL, 1, NULL);
 }
 
 void AsyncParamUpdate::reconnectWifi(void *parameters)
@@ -71,6 +73,25 @@ void AsyncParamUpdate::reconnectMqtt(void *parameters)
         }
 
         vTaskDelay(pdMS_TO_TICKS(DELAY_MS));
+    }
+}
+
+void AsyncParamUpdate::sendActiveMessage(void *parameters)
+{
+
+    vTaskDelay(pdMS_TO_TICKS(30000));
+    for (;;)
+    {
+        JsonDocument doc;
+        doc["Device"] = instance->deviceName;
+        doc["status"] = "active";
+
+        char jsonBuffer[JSON_BUFFER_SIZE];
+        serializeJson(doc, jsonBuffer);
+
+        instance->mqttClient.publish(instance->updateTopic.c_str(), MQTT_QOS_LEVEL, true, jsonBuffer);
+
+        vTaskDelay(pdMS_TO_TICKS(30000));
     }
 }
 
@@ -142,58 +163,107 @@ String GetPayloadContent(char *data, size_t len)
 void AsyncParamUpdate::OnMqttReceived(char *topic, char *payload, AsyncMqttClientMessageProperties properties, size_t len, size_t index, size_t total)
 {
     String content = GetPayloadContent(payload, len);
-    JsonDocument doc;
 
+    JsonDocument doc;
     DeserializationError error = deserializeJson(doc, content);
     if (error)
     {
-        instance->logMessage("Message received deserializeJson() failed with code ");
-        instance->logMessage(error.c_str());
+        instance->logMessage("Message received deserializeJson() failed with code " + String(error.c_str()));
         return;
     }
 
-    for (JsonPair kv : doc.as<JsonObject>())
+    if (!doc.containsKey("parameters"))
+    {
+        return;
+    }
+
+    JsonObject params = doc["parameters"].as<JsonObject>();
+    String messageId = doc["id"].as<String>();
+    bool allParamsUpdated = true;
+    std::map<String, JsonVariant> oldValues;
+
+    for (JsonPair kv : params)
     {
         String key = kv.key().c_str();
-        auto paramIter = instance->params.find(key.c_str());
+        instance->logMessage(key.c_str());
 
+        auto paramIter = instance->params.find(key.c_str());
         if (paramIter != instance->params.end())
         {
             ParamInfo &paramInfo = paramIter->second;
-            instance->updateParameter(paramInfo, kv.value());
+            JsonVariant oldValue = *static_cast<JsonVariant *>(paramInfo.param);
+            oldValues[key] = oldValue;
+            bool updateSuccess = instance->updateParameter(paramInfo, kv.value());
+
+            if (!updateSuccess)
+            {
+                allParamsUpdated = false;
+                *static_cast<JsonVariant *>(paramInfo.param) = oldValue;
+                break;
+            }
         }
+    }
+
+    JsonDocument ackDoc;
+    ackDoc["id"] = messageId;
+    ackDoc["Device"] = instance->deviceName;
+    ackDoc["status"] = allParamsUpdated ? "updated" : "failed";
+
+    char jsonBuffer[JSON_BUFFER_SIZE];
+    serializeJson(ackDoc, jsonBuffer);
+    instance->mqttClient.publish(instance->confirmationTopic.c_str(), MQTT_QOS_LEVEL, true, jsonBuffer);
+
+    if (!allParamsUpdated)
+    {
+        instance->logMessage("Error updating parameters");
     }
 }
 
-void AsyncParamUpdate::updateParameter(const ParamInfo &paramInfo, JsonVariant value)
+bool AsyncParamUpdate::updateParameter(const ParamInfo &paramInfo, JsonVariant value)
 {
     const std::string &paramName = paramInfo.paramName;
+    bool success = false;
 
-    if (strcmp(paramInfo.typeName, typeid(int).name()) == 0)
+    try
     {
-        *(static_cast<int *>(paramInfo.param)) = value.as<int>();
-        preferences.putInt(paramName.c_str(), value.as<int>());
+
+        if (strcmp(paramInfo.typeName, typeid(int).name()) == 0)
+        {
+            *(static_cast<int *>(paramInfo.param)) = value.as<int>();
+            success = preferences.putInt(paramName.c_str(), value.as<int>());
+        }
+        else if (strcmp(paramInfo.typeName, typeid(float).name()) == 0)
+        {
+            *(static_cast<float *>(paramInfo.param)) = value.as<float>();
+            success = preferences.putFloat(paramName.c_str(), value.as<float>());
+        }
+        else if (strcmp(paramInfo.typeName, typeid(double).name()) == 0)
+        {
+            *(static_cast<double *>(paramInfo.param)) = value.as<double>();
+            success = preferences.putDouble(paramName.c_str(), value.as<double>());
+        }
+        else if (strcmp(paramInfo.typeName, typeid(bool).name()) == 0)
+        {
+            *(static_cast<bool *>(paramInfo.param)) = value.as<bool>();
+            success = preferences.putBool(paramName.c_str(), value.as<bool>());
+        }
+        else if (strcmp(paramInfo.typeName, typeid(String).name()) == 0)
+        {
+            *(static_cast<String *>(paramInfo.param)) = value.as<String>();
+            success = preferences.putString(paramName.c_str(), value.as<String>().c_str());
+        }
+        else
+        {
+            logMessage("Error: Type mismatch or unsupported type.");
+        }
     }
-    else if (strcmp(paramInfo.typeName, typeid(float).name()) == 0)
+    catch (const std::exception &e)
     {
-        *(static_cast<float *>(paramInfo.param)) = value.as<float>();
-        preferences.putFloat(paramName.c_str(), value.as<float>());
+        logMessage("Exception caught: " + String(e.what()));
+        success = false;
     }
-    else if (strcmp(paramInfo.typeName, typeid(double).name()) == 0)
-    {
-        *(static_cast<double *>(paramInfo.param)) = value.as<double>();
-        preferences.putDouble(paramName.c_str(), value.as<double>());
-    }
-    else if (strcmp(paramInfo.typeName, typeid(bool).name()) == 0)
-    {
-        *(static_cast<bool *>(paramInfo.param)) = value.as<bool>();
-        preferences.putBool(paramName.c_str(), value.as<bool>());
-    }
-    else if (strcmp(paramInfo.typeName, typeid(String).name()) == 0)
-    {
-        *(static_cast<String *>(paramInfo.param)) = value.as<String>();
-        preferences.putString(paramName.c_str(), value.as<String>().c_str());
-    }
+
+    return success;
 }
 
 void AsyncParamUpdate::InitMqtt()
@@ -216,13 +286,42 @@ void AsyncParamUpdate::publishParametersList(std::string paramName)
     };
 
     JsonDocument doc;
-    doc["devicename"] = deviceName;
-    doc["ip"] = WiFi.localIP().toString();
+    doc["Device"] = deviceName;
+    doc["Ip"] = WiFi.localIP().toString();
     JsonArray paramsArray = doc["parameters"].to<JsonArray>();
 
     for (const auto &p : params)
     {
-        paramsArray.add(p.first.c_str());
+        JsonObject paramObj = paramsArray.add<JsonObject>();
+
+        std::string paramValue;
+
+        if (p.second.typeName == typeid(int).name())
+        {
+            paramValue = std::to_string(*static_cast<int *>(p.second.param));
+        }
+        else if (p.second.typeName == typeid(float).name())
+        {
+            paramValue = std::to_string(*static_cast<float *>(p.second.param));
+        }
+        else if (p.second.typeName == typeid(double).name())
+        {
+            paramValue = std::to_string(*static_cast<double *>(p.second.param));
+        }
+        else if (p.second.typeName == typeid(bool).name())
+        {
+            paramValue = *static_cast<bool *>(p.second.param) ? "true" : "false";
+        }
+        else if (p.second.typeName == typeid(std::string).name())
+        {
+            paramValue = *static_cast<std::string *>(p.second.param);
+        }
+        else
+        {
+            continue;
+        }
+
+        paramObj[p.first.c_str()] = paramValue;
     }
 
     char jsonBuffer[JSON_BUFFER_SIZE];

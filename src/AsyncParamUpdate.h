@@ -10,6 +10,7 @@
 #include <string>
 #include <typeinfo>
 #include <unordered_map>
+#include <map>
 #include <queue>
 #include <Preferences.h>
 
@@ -19,6 +20,7 @@
 #define JSON_BUFFER_SIZE 1024
 #define MQTT_QOS_LEVEL 2
 #define LOG_SUFFIX "/log"
+#define CONFIRMATION_SUFFIX "/confirmation"
 #define WIFI_EVENT_CONNECTED SYSTEM_EVENT_STA_GOT_IP
 #define WIFI_EVENT_DISCONNECTED SYSTEM_EVENT_STA_DISCONNECTED
 
@@ -85,6 +87,7 @@ private:
     const char *wifiPassword;
     String deviceName;
     String updateTopic;
+    String confirmationTopic;
     String logTopic;
     const char *mqttHost;
     uint16_t mqttPort;
@@ -104,6 +107,7 @@ private:
 
     static void reconnectWifi(void *parameters);
     static void reconnectMqtt(void *parameters);
+    static void sendActiveMessage(void *parameters);
     static void WiFiEvent(WiFiEvent_t event);
     static void OnMqttConnect(bool sessionPresent);
     static void OnMqttDisconnect(AsyncMqttClientDisconnectReason reason);
@@ -113,7 +117,7 @@ private:
     static void OnMqttReceived(char *topic, char *payload, AsyncMqttClientMessageProperties properties, size_t len, size_t index, size_t total);
     void InitMqtt();
     void publishParametersList(std::string paramName);
-    void updateParameter(const ParamInfo &paramInfo, JsonVariant value);
+    bool updateParameter(const ParamInfo &paramInfo, JsonVariant value);
     void saveParameter(const std::string &key, int value);
     void saveParameter(const std::string &key, float value);
     void saveParameter(const std::string &key, bool value);
