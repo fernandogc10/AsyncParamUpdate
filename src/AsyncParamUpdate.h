@@ -13,7 +13,15 @@
 #include <map>
 #include <queue>
 #include <Preferences.h>
+#include <LoRa.h>
 
+#define SCK 5   // GPIO5  -- SX1276's SCK
+#define MISO 19 // GPIO19 -- SX1276's MISO
+#define MOSI 27 // GPIO27 -- SX1276's MOSI
+#define SS 18   // GPIO18 -- SX1276's CS
+#define RST 14  // GPIO14 -- SX1276's RESET
+#define DI0 26  // GPIO26 -- SX1276's IRQ(Interrupt Request)
+#define BAND 915E6
 #define DELAY_MS 5000
 #define BOARDS_PREFIX "boards/"
 #define REGISTRY_TOPIC "boards/registry"
@@ -38,6 +46,8 @@ public:
     };
 
     AsyncParamUpdate(const char *wifiSSID, const char *wifiPassword, const char *mqttHost, uint16_t mqttPort, const char *mqttUser, const char *mqttPassword, const char *deviceName, bool mqttLog);
+
+    AsyncParamUpdate(const char *deviceName, bool mqttLog = false);
 
     template <typename T>
     void addParameter(const std::string &paramName, T &param)
@@ -94,6 +104,7 @@ private:
     const char *mqttUser;
     const char *mqttPassword;
     bool mqttLog;
+    bool useLoRa;
     logging::Logger logger;
 
     AsyncMqttClient mqttClient;
@@ -105,6 +116,7 @@ private:
     TaskHandle_t wifiConnectionTask;
     TaskHandle_t mqttConnectionTask;
 
+    static void OnLoRaReceived(int packetSize);
     static void reconnectWifi(void *parameters);
     static void reconnectMqtt(void *parameters);
     static void sendActiveMessage(void *parameters);
@@ -115,6 +127,7 @@ private:
     static void OnMqttUnsubscribe(uint16_t packetId);
     static void OnMqttPublish(uint16_t packetId);
     static void OnMqttReceived(char *topic, char *payload, AsyncMqttClientMessageProperties properties, size_t len, size_t index, size_t total);
+    static void onTxDone();
     void InitMqtt();
     void publishParametersList(std::string paramName);
     bool updateParameter(const ParamInfo &paramInfo, JsonVariant value);
@@ -124,6 +137,7 @@ private:
     void saveParameter(const std::string &key, const char *value);
     void saveParameter(const std::string &key, const String &value);
     void saveParameter(const std::string &key, double value);
+    void initializeLoRa();
     void logMessage(const String &message);
 };
 

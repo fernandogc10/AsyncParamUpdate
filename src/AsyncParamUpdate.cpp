@@ -17,6 +17,7 @@ AsyncParamUpdate::AsyncParamUpdate(const char *wifiSSID, const char *wifiPasswor
     this->mqttUser = mqttUser;
     this->mqttPassword = mqttPassword;
     this->mqttLog = mqttLog;
+    this->useLoRa = false;
 
     InitMqtt();
     WiFi.onEvent(AsyncParamUpdate::WiFiEvent);
@@ -25,6 +26,37 @@ AsyncParamUpdate::AsyncParamUpdate(const char *wifiSSID, const char *wifiPasswor
     xTaskCreate(reconnectMqtt, "MqttReconnect", 4096, NULL, 1, &mqttConnectionTask);
     vTaskSuspend(mqttConnectionTask);
     xTaskCreate(sendActiveMessage, "ActiveMessage", 4096, NULL, 1, NULL);
+}
+
+AsyncParamUpdate::AsyncParamUpdate(const char *deviceName, bool mqttLog)
+{
+    instance = this;
+
+    this->deviceName = deviceName;
+    this->mqttLog = mqttLog;
+    this->useLoRa = true;
+
+    this->initializeLoRa();
+}
+
+void AsyncParamUpdate::initializeLoRa()
+{
+
+    SPI.begin(SCK, MISO, MOSI, SS);
+    LoRa.setPins(SS, RST, DI0);
+
+    if (!LoRa.begin(BAND))
+    {
+        Serial.println("Starting LoRa failed!");
+        while (1)
+            ;
+    }
+
+    Serial.println("Starting LoRa success!");
+
+    LoRa.onReceive(OnLoRaReceived);
+    LoRa.receive();
+    // LoRa.onTxDone(onTxDone);
 }
 
 void AsyncParamUpdate::reconnectWifi(void *parameters)
@@ -266,6 +298,74 @@ bool AsyncParamUpdate::updateParameter(const ParamInfo &paramInfo, JsonVariant v
     return success;
 }
 
+void AsyncParamUpdate::OnLoRaReceived(int packetSize)
+{
+    String receivedMessage;
+    while (LoRa.available())
+    {
+        receivedMessage += (char)LoRa.read();
+    }
+
+    // Procesar el mensaje recibido
+    JsonDocument doc;
+    DeserializationError error = deserializeJson(doc, receivedMessage);
+    if (error)
+    {
+        instance->logMessage("LoRa message deserializeJson() failed with code " + String(error.c_str()));
+        return;
+    }
+
+    if (!doc.containsKey("parameters"))
+    {
+        return;
+    }
+
+    JsonObject params = doc["parameters"].as<JsonObject>();
+    String messageId = doc["id"].as<String>();
+    bool allParamsUpdated = true;
+    std::map<String, JsonVariant> oldValues;
+
+    for (JsonPair kv : params)
+    {
+        String key = kv.key().c_str();
+        instance->logMessage(key.c_str());
+
+        auto paramIter = instance->params.find(key.c_str());
+        if (paramIter != instance->params.end())
+        {
+            ParamInfo &paramInfo = paramIter->second;
+            JsonVariant oldValue = *static_cast<JsonVariant *>(paramInfo.param);
+            oldValues[key] = oldValue;
+            bool updateSuccess = instance->updateParameter(paramInfo, kv.value());
+
+            if (!updateSuccess)
+            {
+                allParamsUpdated = false;
+                *static_cast<JsonVariant *>(paramInfo.param) = oldValue;
+                break;
+            }
+        }
+    }
+
+    JsonDocument ackDoc;
+    ackDoc["id"] = messageId;
+    ackDoc["Device"] = instance->deviceName;
+    ackDoc["status"] = allParamsUpdated ? "updated" : "failed";
+
+    char jsonBuffer[JSON_BUFFER_SIZE];
+    serializeJson(ackDoc, jsonBuffer);
+
+    // Envía una respuesta a través de LoRa
+    LoRa.beginPacket();
+    LoRa.print(jsonBuffer);
+    LoRa.endPacket();
+
+    if (!allParamsUpdated)
+    {
+        instance->logMessage("Error updating parameters");
+    }
+}
+
 void AsyncParamUpdate::InitMqtt()
 {
     mqttClient.onConnect(AsyncParamUpdate::OnMqttConnect);
@@ -281,9 +381,12 @@ void AsyncParamUpdate::InitMqtt()
 void AsyncParamUpdate::publishParametersList(std::string paramName)
 {
 
-    while (!mqttClient.connected())
+    if (!useLoRa)
     {
-    };
+        while (!mqttClient.connected())
+        {
+        }
+    }
 
     JsonDocument doc;
     doc["Device"] = deviceName;
@@ -326,8 +429,27 @@ void AsyncParamUpdate::publishParametersList(std::string paramName)
 
     char jsonBuffer[JSON_BUFFER_SIZE];
     serializeJson(doc, jsonBuffer);
-    mqttClient.publish(REGISTRY_TOPIC, MQTT_QOS_LEVEL, true, jsonBuffer);
+
+    if (useLoRa)
+    {
+        // Send via LoRa
+        LoRa.beginPacket();
+        LoRa.print(jsonBuffer);
+        LoRa.endPacket();
+    }
+    else
+    {
+        // Send via MQTT
+        mqttClient.publish(REGISTRY_TOPIC, MQTT_QOS_LEVEL, true, jsonBuffer);
+    }
 }
+
+void AsyncParamUpdate::onTxDone()
+{
+
+    instance->logMessage("Datos enviados");
+}
+
 void AsyncParamUpdate::saveParameter(const std::string &key, int value)
 {
     preferences.putInt(key.c_str(), value);
