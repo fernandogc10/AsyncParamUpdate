@@ -315,6 +315,13 @@ void AsyncParamUpdate::OnLoRaReceived(int packetSize)
         return;
     }
 
+    String deviceName = doc["Device"].as<String>();
+    if (deviceName != instance->deviceName)
+    {
+        instance->logMessage("Received message is not for this device, discarding.");
+        return;
+    }
+
     if (!doc.containsKey("parameters"))
     {
         return;

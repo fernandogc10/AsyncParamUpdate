@@ -14,6 +14,7 @@
 #include <queue>
 #include <Preferences.h>
 #include <LoRa.h>
+#include "LoRaToMqttGateway.h"
 
 #define SCK 5   // GPIO5  -- SX1276's SCK
 #define MISO 19 // GPIO19 -- SX1276's MISO
@@ -48,6 +49,13 @@ public:
     AsyncParamUpdate(const char *wifiSSID, const char *wifiPassword, const char *mqttHost, uint16_t mqttPort, const char *mqttUser, const char *mqttPassword, const char *deviceName, bool mqttLog);
 
     AsyncParamUpdate(const char *deviceName, bool mqttLog = false);
+
+    AsyncParamUpdate() {}
+
+    static void setGateway(const char *wifiID, const char *wifiPass, const char *mqttHost, uint16_t mqttPort, const char *mqttUser, const char *mqttPassword)
+    {
+        LoRaMqttGateway::setGateway(wifiID, wifiPass, mqttHost, mqttPort, mqttUser, mqttPassword);
+    }
 
     template <typename T>
     void addParameter(const std::string &paramName, T &param)
