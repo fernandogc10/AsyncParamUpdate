@@ -383,6 +383,7 @@ void AsyncParamUpdate::InitMqtt()
     mqttClient.setServer(mqttHost, mqttPort);
     mqttClient.setCredentials(mqttUser, mqttPassword);
     mqttClient.setClientId(deviceName.c_str());
+    mqttClient.setSecure(MQTT_SECURE);
 }
 
 void AsyncParamUpdate::publishParametersList(std::string paramName)

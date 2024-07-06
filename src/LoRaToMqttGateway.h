@@ -20,6 +20,7 @@
 #define MQTT_QOS_LEVEL 2
 #define WIFI_EVENT_CONNECTED SYSTEM_EVENT_STA_GOT_IP
 #define WIFI_EVENT_DISCONNECTED SYSTEM_EVENT_STA_DISCONNECTED
+#define MQTT_SECURE true
 
 const char *wifiSSID;
 const char *wifiPassword;
@@ -185,6 +186,7 @@ private:
         mqttClient.setServer(mqttHost, mqttPort);
         mqttClient.setCredentials(mqttUser, mqttPassword);
         mqttClient.setClientId("LoRaGatewayDevice");
+        mqttClient.setSecure(MQTT_SECURE);
     }
 
     static void reconnectGatewayWifi(void *parameters)
