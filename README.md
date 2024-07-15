@@ -97,7 +97,32 @@ To configure the `AsyncParamUpdate` library in **LoRa node mode**, where the dev
       asyncParamUpdater.addParameter("yourIntParam", yourIntParam);
     }
     ```
+### LoRa Gateway Mode
 
+To configure the `AsyncParamUpdate` library in **LoRa gateway mode**, where the device acts as a gateway for LoRa communication, follow these steps:
+
+1. **Include the library at the top of your sketch:**
+
+    ```cpp
+    #include "AsyncParamUpdate.h"
+    ```
+
+2. **Create an instance of `AsyncParamUpdate` for LoRa configuration and set it as a gateway:**
+
+    ```cpp
+    AsyncParamUpdate asyncParamUpdater;
+    ```
+
+   The `setGateway()` function sets the library to operate in **LoRa gateway mode**, allowing the device to listen for incoming LoRa messages and serve as a gateway.
+
+3. **Initialize the instance in the `setup()` function and add your parameters:**
+
+    ```cpp
+    void setup() {
+      // Initialize AsyncParamUpdate for LoRa Gateway Mode
+      asyncParamUpdater.setGateway("YourWiFiSSID", "YourWiFiPassword", "MQTTHost", MQTTPort, "MQTTUser", "MQTTPassword");
+    }
+    ```
 
 
 
