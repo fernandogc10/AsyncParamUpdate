@@ -64,3 +64,41 @@ See [`AsyncParamUpdateExample.cpp`](https://github.com/fernandogc10/AsyncParamUp
 
 Check out the [`AsyncParamUpdateExample.cpp`](https://github.com/fernandogc10/AsyncParamUpdate/blob/main/examples/AsyncParamUpdateExample.cpp) file in the examples directory for a detailed example of how to use the AsyncParamUpdate library in a project.
 
+## LoRa Integration
+
+The `AsyncParamUpdate` library also supports LoRa for long-range, low-power wireless communication. This makes it suitable for scenarios where WiFi connectivity is not available or practical.
+
+### LoRa Node Mode
+
+To configure the `AsyncParamUpdate` library in **LoRa node mode**, where the device communicates over LoRa without using WiFi or MQTT, follow these steps:
+
+1. **Include the library at the top of your sketch:**
+
+    ```cpp
+    #include "AsyncParamUpdate.h"
+    ```
+
+2. **Create an instance of `AsyncParamUpdate` for LoRa configuration:**
+
+    ```cpp
+    AsyncParamUpdate asyncParamUpdater("DeviceName");
+    ```
+
+   This constructor sets up the library in **LoRa node mode**, where the device will use LoRa for communication.
+
+3. **Initialize the instance in the `setup()` function and add your parameters:**
+
+    ```cpp
+    void setup() {
+      // Initialize AsyncParamUpdate for LoRa Node Mode
+      asyncParamUpdater.begin();
+
+      int yourIntParam = 0;
+      asyncParamUpdater.addParameter("yourIntParam", yourIntParam);
+    }
+    ```
+
+
+
+
+
